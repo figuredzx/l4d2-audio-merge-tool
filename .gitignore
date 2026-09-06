@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 本机构建产物（发布用的 exe 由 GitHub Actions 自动构建）
+build/
+dist/
+*.spec
+音频库合并工具.exe
+
+# 第三方软件，禁止上传（版权限制）
+x86/
+
+# 本地配置与临时调试脚本
+settings.json
+_time_det*.py

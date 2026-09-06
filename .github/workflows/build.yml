@@ -1,0 +1,38 @@
+name: Build & Release
+
+on:
+  push:
+    tags: ['v*']        # 推送 v 开头的 tag 自动发 Release，如 git tag v1.0.0 && git push --tags
+  workflow_dispatch:    # 也允许在 GitHub 网页上手动点一下构建（产物在 Artifacts 里下载）
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装 PyInstaller
+        run: pip install pyinstaller
+
+      - name: 打包 exe
+        run: pyinstaller --onefile --noconsole --clean --paths . --name AudioMergeTool merger/gui.py
+
+      - name: 重命名为中文文件名
+        shell: pwsh
+        run: Copy-Item dist/AudioMergeTool.exe "音频库合并工具.exe"
+
+      - name: 上传构建产物（每次构建都可下载）
+        uses: actions/upload-artifact@v4
+        with:
+          name: AudioMergeTool-exe
+          path: 音频库合并工具.exe
+
+      - name: 发布到 GitHub Release（仅 tag 触发时，附件就是单个 exe）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: 音频库合并工具.exe
