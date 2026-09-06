@@ -31,10 +31,21 @@
 
 ## 下载与使用（无需 Python）
 
-1. 到 [Releases](../../releases) 下载 **`音频库合并工具.exe`**（单文件，约 12 MB）
+exe 由 GitHub Actions 自动构建，有两个下载渠道：
+
+**方式一：Releases 正式版（推荐普通用户，免登录）**
+
+1. 打开 [Releases](../../releases)，下载最新版本里的 **`音频库合并工具.exe`**
 2. 放到任意目录，双击即可运行，**无需安装 Python 或任何其他软件**
-3. Windows 可能报 SmartScreen 未知发布者 / 杀毒误报（PyInstaller 单文件打包的常见现象），
-   选择「仍要运行」或加白名单即可
+
+**方式二：Actions 最新构建（想第一时间用最新改动时）**
+
+1. 打开 [Actions 构建页面](../../actions)，点最近一次绿色 ✓ 的 **Build & Release**
+2. 页面底部 **Artifacts（产物）** → 下载 **`AudioMergeTool-exe`**（是个 zip，解压得到 exe）
+3. 注意：Actions 产物需登录 GitHub 账号才能下载，且默认只保留 90 天
+
+**通用提示：** Windows 可能报 SmartScreen 未知发布者 / 杀毒误报（PyInstaller 单文件打包的常见现象），
+选择「仍要运行」或加白名单即可。
 
 ## 运行依赖说明（关键功能全部内置）
 
@@ -76,7 +87,7 @@ merger/            源码
   keyvalues.py     KeyValues 脚本解析/合并/序列化
   gui.py           Tkinter 界面
 启动音频库合并工具.bat   启动器（优先 exe，回退 Python 源码）
-音频库合并工具.exe       打包好的可执行文件（Release 提供，仓库中不含）
+音频库合并工具.exe       打包好的可执行文件（GitHub Actions 构建产物，仓库中不含）
 ```
 
 ## 协议
