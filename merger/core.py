@@ -89,19 +89,20 @@ def rename_sound_dir(source, old_name, new_name, log=lambda m: None):
     new_scripts = {}
     new_orig = {}
     for k, data in source.scripts.items():
-        # 匹配 "wave" "...old_name/..." 并替换
+        # 匹配 "wave" "path" 并替换路径中的目录名
         def repl(m):
             parts = m.group(0).split(b'"')
-            if len(parts) < 3:
+            if len(parts) < 5:
                 return m.group(0)
-            path = parts[2]
-            # 用正则替换路径中的目录名，保留大小写风格
+            # parts[0]='' parts[1]='wave' parts[2]=空格 parts[3]=路径 parts[4]=''
+            path = parts[3]
+            # 替换路径中的顶级目录名（前面是 ) 或 # 或行首，后面跟 /）
             path = re.sub(
-                rb'(?<![A-Za-z0-9_])' + re.escape(old_name.encode('utf-8')) + rb'(?=/)',
+                rb'(?<![A-Za-z0-9_/])' + re.escape(old_name.encode('utf-8')) + rb'(?=/)',
                 new_name.encode('utf-8'),
                 path,
                 flags=re.IGNORECASE)
-            parts[2] = path
+            parts[3] = path
             return b'"'.join(parts)
         new_data = re.sub(rb'"wave"\s+"[^"]*"', repl, data, flags=re.IGNORECASE)
         new_scripts[k] = new_data
