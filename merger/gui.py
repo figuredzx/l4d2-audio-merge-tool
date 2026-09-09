@@ -47,17 +47,21 @@ class App(tk.Tk):
         super().__init__()
         self.title('L4D2 音频库合并工具')
         # DPI 感知后物理像素 = 逻辑像素，需要更大的窗口尺寸
-        self.geometry('1400x950')
-        self.minsize(1200, 850)
+        self.geometry('1400x960')
+        self.minsize(1200, 860)
         self.update_idletasks()
         # 启动时让窗口居中并确保完全可见
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        w, h = 1400, 950
+        w, h = 1400, 960
         if h > sh - 80:
             h = sh - 80
         x = max(0, (sw - w) // 2)
-        y = max(0, (sh - h) // 3)
+        y = max(0, (sh - h) // 4)
         self.geometry(f'{w}x{h}+{x}+{y}')
+        # 确保所有子控件已布局完成，再强制抬到最前
+        self.update_idletasks()
+        self.lift()
+        self.focus_force()
 
         self.sources = []          # Source，顺序即优先级（前高后低）
         self.analysis = None
@@ -121,8 +125,9 @@ class App(tk.Tk):
         vs.pack(side='right', fill='y', pady=(0, 6), padx=(0, 6))
 
         # ===== 中部标签页 =====
+        # 先声明，但延后 pack——让导出区和日志先从底部 pack，
+        # 标签页再 fill 剩余空间，保证窗口不够高时底部不被挤出
         nb = ttk.Notebook(self)
-        nb.pack(fill='both', expand=True, padx=8, pady=4)
 
         # --- 校验报告 ---
         tab1 = ttk.Frame(nb)
@@ -208,9 +213,18 @@ class App(tk.Tk):
         paned3.add(bot3, weight=1)
         self.tree_af.bind('<<TreeviewSelect>>', self._on_af_select)
 
-        # ===== 导出区 =====
+        # ===== 日志 =====（先从底部 pack，保证始终可见）
+        frm_log = ttk.LabelFrame(self, text='日志')
+        frm_log.pack(side='bottom', fill='x', padx=8, pady=(4, 8))
+        self.txt_log = tk.Text(frm_log, height=6, state='disabled', font=('Consolas', 9))
+        sl = ttk.Scrollbar(frm_log, orient='vertical', command=self.txt_log.yview)
+        self.txt_log.configure(yscrollcommand=sl.set)
+        self.txt_log.pack(side='left', fill='x', expand=True, padx=(6, 0), pady=6)
+        sl.pack(side='right', fill='y', pady=6, padx=(0, 6))
+
+        # ===== 导出区 =====（紧贴日志上方）
         frm_out = ttk.LabelFrame(self, text='导出合并库')
-        frm_out.pack(fill='x', padx=8, pady=4)
+        frm_out.pack(side='bottom', fill='x', padx=8, pady=4)
         ttk.Label(frm_out, text='库文件夹名：').grid(row=0, column=0, padx=(8, 2), pady=6, sticky='w')
         self.var_libname = tk.StringVar(value='myaudiolib')
         ttk.Entry(frm_out, textvariable=self.var_libname, width=20).grid(row=0, column=1, padx=2)
@@ -246,14 +260,8 @@ class App(tk.Tk):
                                   foreground='#666')
         self.lbl_skin.pack(side='left')
 
-        # ===== 日志 =====
-        frm_log = ttk.LabelFrame(self, text='日志')
-        frm_log.pack(fill='x', padx=8, pady=(4, 8))
-        self.txt_log = tk.Text(frm_log, height=6, state='disabled', font=('Consolas', 9))
-        sl = ttk.Scrollbar(frm_log, orient='vertical', command=self.txt_log.yview)
-        self.txt_log.configure(yscrollcommand=sl.set)
-        self.txt_log.pack(side='left', fill='x', expand=True, padx=(6, 0), pady=6)
-        sl.pack(side='right', fill='y', pady=6, padx=(0, 6))
+        # 标签页最后 pack——fill 导出区和日志之间的剩余空间
+        nb.pack(fill='both', expand=True, padx=8, pady=4)
 
         self.protocol('WM_DELETE_WINDOW', self._on_close)
 
