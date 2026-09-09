@@ -37,10 +37,17 @@ except Exception:
 
 class App(tk.Tk):
     def __init__(self):
+        # 高分屏 DPI 感知：调 Windows API 让 Tkinter 不被系统拉伸模糊
+        if sys.platform == 'win32':
+            try:
+                import ctypes
+                ctypes.windll.shcore.SetProcessDpiAwareness(1)
+            except Exception:
+                pass
         super().__init__()
         self.title('L4D2 音频库合并工具')
-        self.geometry('1180x820')
-        self.minsize(960, 680)
+        self.geometry('1280x860')
+        self.minsize(1060, 740)
 
         self.sources = []          # Source，顺序即优先级（前高后低）
         self.analysis = None
