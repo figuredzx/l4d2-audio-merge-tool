@@ -517,7 +517,6 @@ class App(tk.Tk):
             self.tree_src.item(iid, values=(
                 item['values'][0], item['values'][1], src.script_entries,
                 src.audio_count, item['values'][4]))
-            self._dirty = True
             self.log(f'来源「{src.label}」音频目录 {old} -> {new} 已重命名')
             win.destroy()
         ttk.Button(win, text='确定', command=do_rename).pack(side='left', padx=(120, 4), pady=8)
@@ -568,7 +567,6 @@ class App(tk.Tk):
                 return
             ok = rename_script_file(src, old, new, log=self.log)
             if ok:
-                self._dirty = True
                 item = self.tree_src.item(iid)
                 self.tree_src.item(iid, values=(
                     item['values'][0], item['values'][1], src.script_entries,
