@@ -24,7 +24,7 @@ from merger.core import (
     find_l4d2_dirs, find_deployed_libs, make_sources_from_package,
     make_sources_from_game, make_sources_from_vpk, _read_candidate_bytes,
     is_valid_game_root, save_game_root, find_l4n, find_vpk_exe,
-    build_sound_cache,
+    build_sound_cache, detect_custom_sound_dirs, rename_sound_dir,
 )
 from merger.keyvalues import serialize
 import re as _re
@@ -106,6 +106,7 @@ class App(tk.Tk):
         ttk.Button(btns, text='扫描游戏目录已部署的库', command=self.scan_game_libs).pack(side='left', padx=4)
         ttk.Button(btns, text='设置游戏位置…', command=self.choose_game_root).pack(side='left', padx=4)
         ttk.Button(btns, text='移除选中', command=self.remove_selected).pack(side='left', padx=4)
+        ttk.Button(btns, text='重命名音频目录…', command=self.rename_sound_dir).pack(side='left', padx=4)
         ttk.Button(btns, text='上移', width=6, command=lambda: self.move_selected(-1)).pack(side='left')
         ttk.Button(btns, text='下移', width=6, command=lambda: self.move_selected(1)).pack(side='left', padx=4)
         ttk.Button(btns, text='开始分析', command=self.start_analysis).pack(side='right')
@@ -462,6 +463,61 @@ class App(tk.Tk):
             self.tree_src.move(x, '', idx)
         self.sources.sort(key=lambda s: order.index(s.lib_dir))
         self._dirty = True
+
+    def rename_sound_dir(self):
+        sel = self.tree_src.selection()
+        if len(sel) != 1:
+            messagebox.showinfo('提示', '请先选中一个来源库')
+            return
+        iid = sel[0]
+        src = next((s for s in self.sources if s.id == iid), None)
+        if not src:
+            return
+        dirs = detect_custom_sound_dirs(src)
+        if not dirs:
+            messagebox.showinfo('未检测到自定义目录',
+                '该来源未检测到自定义音频目录名。\n'
+                '（只有脚本 wave 路径里引用的非原版目录才会列出）')
+            return
+        # 弹窗：选择要改的目录名 + 输入新名字
+        win = tk.Toplevel(self)
+        win.title('重命名音频目录')
+        win.geometry('420x200')
+        win.transient(self)
+        win.grab_set()
+        ttk.Label(win, text=f'来源：{src.label}').pack(anchor='w', padx=12, pady=(8, 2))
+        ttk.Label(win, text='选择要重命名的音频目录：').pack(anchor='w', padx=12)
+        var_old = tk.StringVar(value=dirs[0])
+        cb = ttk.Combobox(win, textvariable=var_old, values=dirs, state='readonly', width=30)
+        cb.pack(anchor='w', padx=12, pady=4)
+        ttk.Label(win, text='新目录名（仅英文/数字/下划线）：').pack(anchor='w', padx=12)
+        var_new = tk.StringVar()
+        ent = ttk.Entry(win, textvariable=var_new, width=30)
+        ent.pack(anchor='w', padx=12, pady=4)
+        ent.focus_set()
+        def do_rename():
+            old = var_old.get()
+            new = var_new.get().strip()
+            if not new:
+                return
+            if not new.replace('_', '').isalnum():
+                messagebox.showwarning('名称无效', '只能用英文字母、数字和下划线')
+                return
+            if new.lower() == old.lower():
+                messagebox.showinfo('提示', '新旧名字一样')
+                return
+            rename_sound_dir(src, old, new, log=self.log)
+            # 更新 tree_src 显示
+            item = self.tree_src.item(iid)
+            self.tree_src.item(iid, values=(
+                item['values'][0], item['values'][1], src.script_entries,
+                src.audio_count, item['values'][4]))
+            self._dirty = True
+            self.log(f'来源「{src.label}」音频目录 {old} -> {new} 已重命名')
+            win.destroy()
+        ttk.Button(win, text='确定', command=do_rename).pack(side='left', padx=(120, 4), pady=8)
+        ttk.Button(win, text='取消', command=win.destroy).pack(side='left', pady=8)
+        win.bind('<Return>', lambda e: do_rename())
 
     # ---------------------------------------------------------- 分析
     def start_analysis(self):

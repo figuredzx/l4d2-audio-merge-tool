@@ -34,6 +34,102 @@ VANILLA_SOUND_DIRS = {
 }
 
 
+def detect_custom_sound_dirs(source):
+    """扫描来源脚本的 wave 路径，返回自定义音频目录名列表（排除原版目录）。
+    如 wave ")oe/xxx.wav" 返回 'oe'。
+    """
+    import re
+    found = set()
+    wave_re = re.compile(rb'"wave"\s+"[^"]*"', re.IGNORECASE)
+    for data in source.scripts.values():
+        for m in wave_re.finditer(data):
+            # 提取引号内路径，去掉前缀 ) 或 # 等
+            s = m.group(0)
+            # 找到第二个引号内的内容
+            parts = s.split(b'"')
+            if len(parts) < 3:
+                continue
+            path = parts[2].strip()
+            if path:
+                path = path.lstrip(b')#*')
+                path_str = path.decode('utf-8', errors='replace')
+                # 取顶级目录段
+                parts2 = path_str.replace('\\', '/').split('/')
+                if parts2:
+                    top = parts2[0].lower()
+                    if top and top not in VANILLA_SOUND_DIRS and not top.startswith('..'):
+                        found.add(top)
+    # 同时检查 loose 和 vpk_other 里的音频路径
+    for p in source.loose:
+        if p.startswith('sound/'):
+            parts = p.split('/')
+            if len(parts) >= 2:
+                top = parts[1]
+                if top not in VANILLA_SOUND_DIRS:
+                    found.add(top)
+    for p, _e in source.vpk_other:
+        if p.startswith('sound/'):
+            parts = p.split('/')
+            if len(parts) >= 2:
+                top = parts[1]
+                if top not in VANILLA_SOUND_DIRS:
+                    found.add(top)
+    return sorted(found)
+
+
+def rename_sound_dir(source, old_name, new_name, log=lambda m: None):
+    """将来源脚本 wave 路径和音频文件路径里的 old_name 目录改为 new_name。
+    old_name/new_name 不含路径分隔符，仅目录名。
+    """
+    import re
+    old_lower = old_name.lower()
+    new_lower = new_name.lower()
+
+    # 改脚本内容里的 wave 路径
+    new_scripts = {}
+    new_orig = {}
+    for k, data in source.scripts.items():
+        # 匹配 "wave" "...old_name/..." 并替换
+        def repl(m):
+            parts = m.group(0).split(b'"')
+            if len(parts) < 3:
+                return m.group(0)
+            path = parts[2]
+            # 用正则替换路径中的目录名，保留大小写风格
+            path = re.sub(
+                rb'(?<![A-Za-z0-9_])' + re.escape(old_name.encode('utf-8')) + rb'(?=/)',
+                new_name.encode('utf-8'),
+                path,
+                flags=re.IGNORECASE)
+            parts[2] = path
+            return b'"'.join(parts)
+        new_data = re.sub(rb'"wave"\s+"[^"]*"', repl, data, flags=re.IGNORECASE)
+        new_scripts[k] = new_data
+        new_orig[k] = source.script_orig.get(k, k)
+    source.scripts = new_scripts
+    source.script_orig = new_orig
+
+    # 改 loose 路径（文件路径和原始路径）
+    new_loose = {}
+    new_loose_orig = {}
+    for k, v in source.loose.items():
+        nk = k.replace(f'sound/{old_lower}/', f'sound/{new_lower}/')
+        new_loose[nk] = v
+        ok = source.loose_orig.get(k, k)
+        new_loose_orig[nk] = ok.replace(f'sound/{old_lower}/', f'sound/{new_lower}/')
+    source.loose = new_loose
+    source.loose_orig = new_loose_orig
+
+    # 改 vpk_other 路径（VPK 内音频文件）
+    new_other = []
+    for p, e in source.vpk_other:
+        np = p.replace(f'sound/{old_lower}/', f'sound/{new_lower}/')
+        new_other.append((np, e))
+    source.vpk_other = new_other
+
+    log(f'已将音频目录 "{old_name}" 重命名为 "{new_name}"')
+
+
 # ---------------------------------------------------------------- Steam 检测
 GAME_MARKERS = ('left4dead2.exe', os.path.join('left4dead2', 'gameinfo.txt'))
 
