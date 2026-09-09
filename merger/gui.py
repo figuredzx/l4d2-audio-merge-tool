@@ -519,6 +519,8 @@ class App(tk.Tk):
                 src.audio_count, item['values'][4]))
             self.log(f'来源「{src.label}」音频目录 {old} -> {new} 已重命名')
             win.destroy()
+            self.log('正在重新分析…')
+            self.start_analysis()
         ttk.Button(win, text='确定', command=do_rename).pack(side='left', padx=(120, 4), pady=8)
         ttk.Button(win, text='取消', command=win.destroy).pack(side='left', pady=8)
         win.bind('<Return>', lambda e: do_rename())
@@ -572,6 +574,8 @@ class App(tk.Tk):
                     item['values'][0], item['values'][1], src.script_entries,
                     src.audio_count, item['values'][4]))
                 win.destroy()
+                self.log('正在重新分析…')
+                self.start_analysis()
         ttk.Button(win, text='确定', command=do_rename).pack(side='left', padx=(120, 4), pady=8)
         ttk.Button(win, text='取消', command=win.destroy).pack(side='left', pady=8)
         win.bind('<Return>', lambda e: do_rename())
