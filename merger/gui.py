@@ -46,14 +46,12 @@ class App(tk.Tk):
                 pass
         super().__init__()
         self.title('L4D2 音频库合并工具')
-        self.geometry('1400x960')
-        self.minsize(1100, 700)
+        self.geometry('1600x960')
+        self.minsize(1400, 860)
         self.update_idletasks()
-        # 自适应：取内容实际需要的高度，确保所有控件可见
-        req_h = self.winfo_reqheight()
-        req_w = max(1400, self.winfo_reqwidth())
+        # 确保窗口完全可见
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        w, h = req_w, req_h
+        w, h = 1600, 960
         if h > sh - 60:
             h = sh - 60
         if w > sw:
@@ -115,7 +113,7 @@ class App(tk.Tk):
         self.lbl_game.pack(side='right', padx=10)
 
         cols = ('label', 'kind', 'entries', 'audio', 'path')
-        self.tree_src = ttk.Treeview(frm_src, columns=cols, show='headings', height=5)
+        self.tree_src = ttk.Treeview(frm_src, columns=cols, show='headings', height=7)
         for c, t, w in [('label', '名称', 220), ('kind', '类型', 110),
                         ('entries', '音效条目', 80), ('audio', '音频文件', 80),
                         ('path', '库目录路径', 560)]:
@@ -218,7 +216,7 @@ class App(tk.Tk):
         # ===== 日志 =====（先从底部 pack，保证始终可见）
         frm_log = ttk.LabelFrame(self, text='日志')
         frm_log.pack(side='bottom', fill='x', padx=8, pady=(4, 8))
-        self.txt_log = tk.Text(frm_log, height=4, state='disabled', font=('Consolas', 9))
+        self.txt_log = tk.Text(frm_log, height=6, state='disabled', font=('Consolas', 9))
         sl = ttk.Scrollbar(frm_log, orient='vertical', command=self.txt_log.yview)
         self.txt_log.configure(yscrollcommand=sl.set)
         self.txt_log.pack(side='left', fill='x', expand=True, padx=(6, 0), pady=6)
