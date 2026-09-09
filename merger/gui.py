@@ -467,6 +467,9 @@ class App(tk.Tk):
         self._dirty = True
 
     def rename_sound_dir(self):
+        if not self.analysis:
+            messagebox.showinfo('提示', '请先点「开始分析」再重命名音频目录')
+            return
         sel = self.tree_src.selection()
         if len(sel) != 1:
             messagebox.showinfo('提示', '请先选中一个来源库')
@@ -522,6 +525,9 @@ class App(tk.Tk):
         win.bind('<Return>', lambda e: do_rename())
 
     def rename_script_file(self):
+        if not self.analysis:
+            messagebox.showinfo('提示', '请先点「开始分析」再重命名脚本文件')
+            return
         sel = self.tree_src.selection()
         if len(sel) != 1:
             messagebox.showinfo('提示', '请先选中一个来源库')
@@ -545,7 +551,7 @@ class App(tk.Tk):
         var_old = tk.StringVar(value=script_names[0])
         cb = ttk.Combobox(win, textvariable=var_old, values=script_names, state='readonly', width=30)
         cb.pack(anchor='w', padx=12, pady=4)
-        ttk.Label(win, text='新文件名（含 .txt）：').pack(anchor='w', padx=12)
+        ttk.Label(win, text='新文件名（自动补 .txt）：').pack(anchor='w', padx=12)
         var_new = tk.StringVar()
         ent = ttk.Entry(win, textvariable=var_new, width=30)
         ent.pack(anchor='w', padx=12, pady=4)
@@ -556,8 +562,7 @@ class App(tk.Tk):
             if not new:
                 return
             if not new.lower().endswith('.txt'):
-                messagebox.showwarning('名称无效', '文件名必须以 .txt 结尾')
-                return
+                new = new + '.txt'
             if new.lower() == old.lower():
                 messagebox.showinfo('提示', '新旧名字一样')
                 return
