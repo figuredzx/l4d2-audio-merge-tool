@@ -358,10 +358,14 @@ class Source:
                     if low.endswith('/sound.cache') or low == 'sound.cache':
                         continue
                     if low.endswith('.txt'):
-                        # 音频库 VPK 里的所有 .txt 都按声音脚本处理
-                        # （脚本可能在 scripts/ 下，也可能在自定义目录，如 MuisId-Mei/…）
-                        self.scripts[low] = self.vpk.read(entry)
-                        self.script_orig[low] = entry['path']
+                        # addoninfo.txt 是 mod 元数据，不是声音脚本
+                        if low == 'addoninfo.txt' or low.endswith('/addoninfo.txt'):
+                            self.vpk_other.append((low, entry))
+                        else:
+                            # 音频库 VPK 里的其他 .txt 都按声音脚本处理
+                            # （脚本可能在 scripts/ 下，也可能在自定义目录，如 MuisId-Mei/…）
+                            self.scripts[low] = self.vpk.read(entry)
+                            self.script_orig[low] = entry['path']
                     else:
                         self.vpk_other.append((low, entry))
             # 松散文件：收集 sound/ 下音频 + scripts/ 下松散脚本；
@@ -945,12 +949,12 @@ def find_vpk_exe(game_root):
 
 
 def check_l4n_scripts_compat(analysis):
-    """l4n 打包要求所有来源的脚本文件都在 scripts/ 目录下。
+    """l4n 打包要求所有来源的脚本文件在 scripts/ 或 l4n/scripts/ 目录下。
     返回不兼容的 (来源标签, 脚本路径) 列表。"""
     bad = []
     for src in analysis.sources:
         for p in src.scripts:
-            if not p.startswith('scripts/'):
+            if not (p.startswith('scripts/') or p.startswith('l4n/scripts/')):
                 bad.append((src.label, src.script_orig.get(p, p)))
     return bad
 
@@ -963,8 +967,11 @@ def _write_l4n_scripts(analysis, root, log):
     for fpath, text in analysis.merged_scripts().items():
         if fpath.startswith('scripts/'):
             sub = fpath[len('scripts/'):]
+        elif fpath.startswith('l4n/scripts/'):
+            # l4n 格式 VPK 的脚本已在 l4n/scripts/ 下，取其相对路径
+            sub = fpath[len('l4n/scripts/'):]
         else:  # 理论上已被 check_l4n_scripts_compat 拦下
-            log(f'警告：脚本 {fpath} 不在 scripts/ 下，已跳过')
+            log(f'警告：脚本 {fpath} 不在 scripts/ 或 l4n/scripts/ 下，已跳过')
             continue
         dst = os.path.join(base, sub.replace('/', os.sep))
         os.makedirs(os.path.dirname(dst), exist_ok=True)
