@@ -22,11 +22,12 @@ from merger.core import (
     Analysis, Source, export_merge,
     export_l4n_standalone, export_l4n_merge,
     find_l4d2_dirs, find_deployed_libs, make_sources_from_package,
-    make_sources_from_game, _read_candidate_bytes,
+    make_sources_from_game, make_sources_from_vpk, _read_candidate_bytes,
     is_valid_game_root, save_game_root, find_l4n, find_vpk_exe,
     build_sound_cache,
 )
 from merger.keyvalues import serialize
+import re as _re
 
 try:
     import winsound
@@ -80,6 +81,7 @@ class App(tk.Tk):
         btns = ttk.Frame(frm_src)
         btns.pack(fill='x', padx=6, pady=4)
         ttk.Button(btns, text='添加音频库文件夹…', command=self.add_package).pack(side='left')
+        ttk.Button(btns, text='添加 VPK 文件…', command=self.add_vpk_file).pack(side='left', padx=4)
         ttk.Button(btns, text='扫描游戏目录已部署的库', command=self.scan_game_libs).pack(side='left', padx=4)
         ttk.Button(btns, text='设置游戏位置…', command=self.choose_game_root).pack(side='left', padx=4)
         ttk.Button(btns, text='移除选中', command=self.remove_selected).pack(side='left', padx=4)
@@ -356,6 +358,24 @@ class App(tk.Tk):
                 self.q.put(lambda: messagebox.showerror('错误', f'读取失败：{e}'))
         self.run_bg(work)
 
+    def add_vpk_file(self):
+        paths = filedialog.askopenfilenames(
+            title='选择音频库 VPK 文件（一个或多个）',
+            filetypes=[('VPK 文件', '*.vpk'), ('所有文件', '*.*')])
+        if not paths:
+            return
+        def work():
+            all_srcs = []
+            for p in paths:
+                self.log(f'读取 VPK：{p}')
+                try:
+                    srcs = make_sources_from_vpk(p, log=lambda m: self.q.put(lambda: self.log(m)))
+                    all_srcs.extend(srcs)
+                except Exception as e:
+                    self.q.put(lambda m=p, e=e: self.log(f'  [错误] {m}: {e}'))
+            self.q.put(lambda: self._add_sources(all_srcs))
+        self.run_bg(work)
+
     def scan_game_libs(self):
         if not self.game_root:
             if not self.choose_game_root():
@@ -381,12 +401,12 @@ class App(tk.Tk):
             if s.error:
                 self.log(f'  [跳过] {s.label}：{s.error}')
                 continue
-            if any(x.lib_dir == s.lib_dir for x in self.sources):
+            if any(x.id == s.id for x in self.sources):
                 self.log(f'  [已存在] {s.label}')
                 continue
             self.sources.append(s)
             kind = '模组包' if s.kind == 'pkg' else '游戏目录库'
-            self.tree_src.insert('', 'end', iid=s.lib_dir,
+            self.tree_src.insert('', 'end', iid=s.id,
                                  values=(s.label, kind, s.script_entries, s.audio_count, s.lib_dir))
             added += 1
             self.log(f'  [添加] {s.label}（条目 {s.script_entries}，音频 {s.audio_count}）')
@@ -396,7 +416,7 @@ class App(tk.Tk):
     def remove_selected(self):
         sel = self.tree_src.selection()
         for iid in sel:
-            self.sources = [s for s in self.sources if s.lib_dir != iid]
+            self.sources = [s for s in self.sources if s.id != iid]
             self.tree_src.delete(iid)
         if sel:
             self._dirty = True
@@ -406,7 +426,7 @@ class App(tk.Tk):
         if len(sel) != 1:
             return
         iid = sel[0]
-        # iid 即 lib_dir
+        # iid 即 source id
         order = [self.tree_src.item(c, 'iid') for c in self.tree_src.get_children('')]
         i = order.index(iid)
         j = i + delta
@@ -610,6 +630,13 @@ class App(tk.Tk):
                     return
         if not lib or not out or not os.path.isdir(out):
             messagebox.showwarning('提示', '请填写有效的库名和导出目录。')
+            return
+        if not _re.match(r'^[A-Za-z0-9_\-+]+$', lib):
+            messagebox.showwarning(
+                '库名无效',
+                '库名只能包含英文字母、数字、下划线、短横线和加号。\n\n'
+                '中文库名在 VPK 封包或游戏加载时可能出错（引擎对非 ASCII 路径兼容性差），\n'
+                '请改用纯英文名，如 my_audio_lib。')
             return
         if mode != 'folder':
             self.log(f'开始导出 l4n 包（{"皮肤合体" if mode == "l4n_b" else "独立"}）'

@@ -329,11 +329,12 @@ def discover_lib_dirs(folder, max_depth=3):
 class Source:
     """一个音频库来源（一个库文件夹）。"""
 
-    def __init__(self, label, kind, lib_dir, pkg_root=None):
+    def __init__(self, label, kind, lib_dir, pkg_root=None, vpk_file=None):
         self.label = label            # 显示名
         self.kind = kind              # 'pkg' 模组包 | 'gamelib' 游戏目录已部署
         self.lib_dir = os.path.abspath(lib_dir)
         self.pkg_root = pkg_root      # 模组包根目录（gamelib 为 None）
+        self.vpk_file = vpk_file      # 显式指定的 VPK 文件（直接选 .vpk 文件时用）
         self.vpk = None
         self.scripts = {}             # scripts/xxx.txt(小写) -> bytes
         self.script_orig = {}         # 小写路径 -> 原始大小写路径（导出用）
@@ -346,11 +347,11 @@ class Source:
 
     @property
     def id(self):
-        return self.lib_dir
+        return self.vpk_file or self.lib_dir
 
     def load(self, log=lambda m: None):
         try:
-            vpk_path = os.path.join(self.lib_dir, 'pak01_dir.vpk')
+            vpk_path = self.vpk_file or os.path.join(self.lib_dir, 'pak01_dir.vpk')
             if os.path.isfile(vpk_path):
                 self.vpk = VpkReader(vpk_path)
                 for low, entry in self.vpk.entries.items():
@@ -421,6 +422,19 @@ def make_sources_from_game(game_root, log=lambda m: None):
         s.load(log=log)
         out.append(s)
     return out
+
+
+def make_sources_from_vpk(vpk_path, log=lambda m: None):
+    """从独立 VPK 文件创建 Source（VPK 本身就是一个音频库）。"""
+    vpk_path = os.path.abspath(vpk_path)
+    label = os.path.basename(vpk_path)
+    if label.lower().endswith('.vpk'):
+        label = label[:-4]
+    # lib_dir 用 vpk 所在目录；松散文件扫描基于此目录（通常没有松散文件，无碍）
+    s = Source(label, 'pkg', os.path.dirname(vpk_path),
+               pkg_root=os.path.dirname(vpk_path), vpk_file=vpk_path)
+    s.load(log=log)
+    return [s]
 
 
 # ---------------------------------------------------------------- WAV 校验
