@@ -131,6 +131,79 @@ def rename_sound_dir(source, old_name, new_name, log=lambda m: None):
     log(f'已将音频目录 "{old_name}" 重命名为 "{new_name}"')
 
 
+def rename_script_file(source, old_name, new_name, log=lambda m: None):
+    """重命名脚本文件，并同步更新 manifest 里的引用。
+    old_name/new_name 可以是纯文件名(如 game_sounds_oe.txt)或含路径(如 scripts/game_sounds_oe.txt)。
+    """
+    import re
+    # 规范化：统一成 scripts/xxx.txt 的小写形式做匹配
+    old_full = old_name.replace('\\', '/').lower()
+    new_full = new_name.replace('\\', '/').lower()
+    if not old_full.startswith('scripts/'):
+        old_full = f'scripts/{old_full}'
+    if not new_full.startswith('scripts/'):
+        new_full = f'scripts/{new_full}'
+    # 纯文件名形式（manifest 里可能用这种）
+    old_base = old_full.split('/')[-1]
+    new_base = new_full.split('/')[-1]
+
+    # 找到要改的脚本 key（大小写不敏感）
+    target_key = None
+    for k in source.scripts:
+        if k.lower() == old_full:
+            target_key = k
+            break
+    if not target_key:
+        log(f'未找到脚本 {old_full}')
+        return False
+
+    # 改 scripts dict 的 key
+    data = source.scripts.pop(target_key)
+    orig = source.script_orig.pop(target_key, target_key)
+    # 新 key 保留原始大小写风格，只替换文件名部分
+    new_key = target_key.replace(os.path.basename(target_key), os.path.basename(new_full))
+    source.scripts[new_key] = data
+    source.script_orig[new_key] = orig.replace(os.path.basename(target_key), os.path.basename(new_full))
+
+    # 在所有脚本里搜索 manifest 引用并替换
+    old_bytes = target_key.encode('utf-8')  # 原始大小写
+    new_bytes = new_key.encode('utf-8')
+    old_full_bytes = old_full.encode('utf-8')
+    new_full_bytes = new_full.encode('utf-8')
+    old_base_bytes = old_base.encode('utf-8')
+    new_base_bytes = new_base.encode('utf-8')
+    updated_manifests = []
+    for k in list(source.scripts.keys()):
+        d = source.scripts[k]
+        changed = False
+        # 替换 manifest 引用（precache_file / preload_file 后面跟的路径）
+        def repl_ref(m):
+            nonlocal changed
+            parts = m.group(0).split(b'"')
+            if len(parts) < 5:
+                return m.group(0)
+            ref = parts[3].strip()
+            # 匹配 scripts/xxx.txt 或纯 xxx.txt
+            if ref.lower() == old_full_bytes.lower() or ref.lower() == old_base_bytes.lower():
+                # 替换为新路径（保持原格式：如果原来是纯文件名就改文件名，如果原来是全路径就改全路径）
+                if b'/' in ref:
+                    parts[3] = b' ' * (len(parts[3]) - len(ref.strip()) - len(parts[3].lstrip())) + new_full_bytes
+                else:
+                    parts[3] = b' ' + new_base_bytes
+                changed = True
+                return b'"'.join(parts)
+            return m.group(0)
+        new_d = re.sub(rb'"(?:precache_file|preload_file)"\s+"[^"]*"', repl_ref, d, flags=re.IGNORECASE)
+        if changed:
+            source.scripts[k] = new_d
+            updated_manifests.append(k)
+
+    log(f'已将脚本 "{old_name}" 重命名为 "{new_name}"')
+    if updated_manifests:
+        log(f'  同步更新了 {len(updated_manifests)} 个 manifest 引用: {updated_manifests}')
+    return True
+
+
 # ---------------------------------------------------------------- Steam 检测
 GAME_MARKERS = ('left4dead2.exe', os.path.join('left4dead2', 'gameinfo.txt'))
 
