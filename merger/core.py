@@ -370,8 +370,22 @@ class Source:
                         self.vpk_other.append((low, entry))
             # 松散文件：收集 sound/ 下音频 + scripts/ 下松散脚本；
             # 跳过 pak01_dir/ 解包镜像（引擎不读它）和根目录零散文档
-            # 独立 VPK 文件来源不扫松散文件（lib_dir 是 vpk 所在目录，扫它会遍历整个目录）
-            if not self.vpk_file:
+            # 独立 VPK 文件来源：只扫 vpk 同目录下的 sound/ 子目录
+            # （有些音频库的音频不在 VPK 内，而是同目录的 sound/ 下）
+            if self.vpk_file:
+                sound_dir = os.path.join(self.lib_dir, 'sound')
+                if os.path.isdir(sound_dir):
+                    for dp, _dn, fns in os.walk(sound_dir):
+                        for fn in fns:
+                            ap = os.path.join(dp, fn)
+                            rel = os.path.relpath(ap, self.lib_dir).replace('\\', '/')
+                            low = rel.lower()
+                            if fn.lower() == 'sound.cache':
+                                continue
+                            if low.startswith('sound/'):
+                                self.loose[low] = ap
+                                self.loose_orig[low] = rel
+            else:
                 for dp, _dn, fns in os.walk(self.lib_dir):
                     for fn in fns:
                         ap = os.path.join(dp, fn)
