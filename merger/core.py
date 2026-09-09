@@ -366,25 +366,27 @@ class Source:
                         self.vpk_other.append((low, entry))
             # 松散文件：收集 sound/ 下音频 + scripts/ 下松散脚本；
             # 跳过 pak01_dir/ 解包镜像（引擎不读它）和根目录零散文档
-            for dp, _dn, fns in os.walk(self.lib_dir):
-                for fn in fns:
-                    ap = os.path.join(dp, fn)
-                    rel = os.path.relpath(ap, self.lib_dir).replace('\\', '/')
-                    low = rel.lower()
-                    if low.startswith('pak01') and low.endswith('.vpk'):
-                        continue
-                    if low.startswith('pak01_dir/'):
-                        continue  # pak01_dir.vpk 的解包镜像，引擎不读取
-                    if fn.lower() == 'sound.cache':
-                        continue
-                    if low.startswith('sound/'):
-                        self.loose[low] = ap
-                        self.loose_orig[low] = rel
-                    elif low.startswith('scripts/') and low.endswith('.txt'):
-                        # 松散脚本覆盖 VPK 内同路径脚本（引擎松散文件优先）
-                        with open(ap, 'rb') as f:
-                            self.scripts[low] = f.read()
-                        self.script_orig[low] = rel
+            # 独立 VPK 文件来源不扫松散文件（lib_dir 是 vpk 所在目录，扫它会遍历整个目录）
+            if not self.vpk_file:
+                for dp, _dn, fns in os.walk(self.lib_dir):
+                    for fn in fns:
+                        ap = os.path.join(dp, fn)
+                        rel = os.path.relpath(ap, self.lib_dir).replace('\\', '/')
+                        low = rel.lower()
+                        if low.startswith('pak01') and low.endswith('.vpk'):
+                            continue
+                        if low.startswith('pak01_dir/'):
+                            continue  # pak01_dir.vpk 的解包镜像，引擎不读取
+                        if fn.lower() == 'sound.cache':
+                            continue
+                        if low.startswith('sound/'):
+                            self.loose[low] = ap
+                            self.loose_orig[low] = rel
+                        elif low.startswith('scripts/') and low.endswith('.txt'):
+                            # 松散脚本覆盖 VPK 内同路径脚本（引擎松散文件优先）
+                            with open(ap, 'rb') as f:
+                                self.scripts[low] = f.read()
+                            self.script_orig[low] = rel
             self.script_entries = sum(
                 max(1, data.count(b'"') // 8) for data in self.scripts.values()
             )

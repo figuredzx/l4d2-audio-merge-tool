@@ -46,8 +46,18 @@ class App(tk.Tk):
                 pass
         super().__init__()
         self.title('L4D2 音频库合并工具')
-        self.geometry('1280x860')
-        self.minsize(1060, 740)
+        # DPI 感知后物理像素 = 逻辑像素，需要更大的窗口尺寸
+        self.geometry('1400x950')
+        self.minsize(1200, 850)
+        self.update_idletasks()
+        # 启动时让窗口居中并确保完全可见
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        w, h = 1400, 950
+        if h > sh - 80:
+            h = sh - 80
+        x = max(0, (sw - w) // 2)
+        y = max(0, (sh - h) // 3)
+        self.geometry(f'{w}x{h}+{x}+{y}')
 
         self.sources = []          # Source，顺序即优先级（前高后低）
         self.analysis = None
