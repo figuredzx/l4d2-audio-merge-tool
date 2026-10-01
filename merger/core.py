@@ -33,6 +33,10 @@ VANILLA_SOUND_DIRS = {
     'cards', 'card', 'melee', 'guns', 'reload',
 }
 
+# L4D2 声音系统支持的音频扩展名（sound/ 目录下只收集这些，其余忽略——
+# 避免作者放的说明文档、缓存等非音频文件被当成音频处理，导致缓存生成卡死）
+AUDIO_EXTS = {'.wav', '.mp3', '.ogg'}
+
 
 def detect_custom_sound_dirs(source):
     """扫描来源脚本的 wave 路径，返回自定义音频目录名列表（排除原版目录）。
@@ -536,6 +540,12 @@ class Source:
                             # （脚本可能在 scripts/ 下，也可能在自定义目录，如 MuisId-Mei/…）
                             self.scripts[low] = self.vpk.read(entry)
                             self.script_orig[low] = entry['path']
+                    elif low.startswith('sound/'):
+                        # sound/ 下只收音频文件，跳过说明文档、缓存等非音频文件
+                        # （否则导出后 l4n 生成 sound.cache 时会因非音频文件卡死）
+                        ext = os.path.splitext(low)[1].lower()
+                        if ext in AUDIO_EXTS:
+                            self.vpk_other.append((low, entry))
                     else:
                         self.vpk_other.append((low, entry))
             # 松散文件：收集 sound/ 下音频 + scripts/ 下松散脚本；
@@ -552,7 +562,9 @@ class Source:
                             low = rel.lower()
                             if fn.lower() == 'sound.cache':
                                 continue
-                            if low.startswith('sound/'):
+                            # sound/ 下只收音频文件，跳过中文说明文档等非音频文件
+                            ext = os.path.splitext(fn)[1].lower()
+                            if low.startswith('sound/') and ext in AUDIO_EXTS:
                                 self.loose[low] = ap
                                 self.loose_orig[low] = rel
             else:
@@ -568,8 +580,11 @@ class Source:
                         if fn.lower() == 'sound.cache':
                             continue
                         if low.startswith('sound/'):
-                            self.loose[low] = ap
-                            self.loose_orig[low] = rel
+                            # sound/ 下只收音频文件，跳过中文说明文档等非音频文件
+                            ext = os.path.splitext(fn)[1].lower()
+                            if ext in AUDIO_EXTS:
+                                self.loose[low] = ap
+                                self.loose_orig[low] = rel
                         elif low.startswith('scripts/') and low.endswith('.txt'):
                             # 松散脚本覆盖 VPK 内同路径脚本（引擎松散文件优先）
                             with open(ap, 'rb') as f:
@@ -579,9 +594,9 @@ class Source:
                 max(1, data.count(b'"') // 8) for data in self.scripts.values()
             )
             self.audio_count = (
-                sum(1 for p in self.loose if p.endswith('.wav'))
+                sum(1 for p in self.loose if os.path.splitext(p)[1] in AUDIO_EXTS)
                 + sum(1 for p, _e in self.vpk_other
-                      if p.startswith('sound/') and p.endswith('.wav'))
+                      if p.startswith('sound/') and os.path.splitext(p)[1] in AUDIO_EXTS)
             )
         except Exception as e:
             self.error = str(e)
@@ -1143,20 +1158,53 @@ def check_l4n_scripts_compat(analysis):
     return bad
 
 
+def _l4n_script_subpath(fpath):
+    """把来源脚本路径映射到 l4n/scripts/sound/ 下的相对路径。
+
+    l4n 平台只扫描 l4n/scripts/sound/ 目录加载脚本，因此：
+    - scripts/sound/xxx.txt  -> xxx.txt      （scripts/sound/ 整段剥掉）
+    - scripts/xxx.txt        -> xxx.txt      （scripts/ 剥掉）
+    - l4n/scripts/xxx.txt    -> xxx.txt      （已是 l4n 格式，剥到 sound/ 同级）
+    若都不匹配返回 None。"""
+    low = fpath.lower()
+    for prefix in ('scripts/sound/', 'scripts/', 'l4n/scripts/sound/', 'l4n/scripts/'):
+        if low.startswith(prefix):
+            return fpath[len(prefix):]
+    return None
+
+
+def _normalize_manifest_refs(text):
+    """规范化 manifest 里 preload_file/precache_file 的引用路径。
+
+    l4n 把脚本放在 l4n/scripts/sound/ 下，manifest 里的引用必须指向该目录
+    内的相对路径。去掉 scripts/ 或 scripts/sound/ 前缀，使引用与
+    _l4n_script_subpath 的输出一致。"""
+    def repl(m):
+        key = m.group(1)
+        ref = m.group(2)
+        low = ref.lower()
+        for prefix in ('scripts/sound/', 'scripts/'):
+            if low.startswith(prefix):
+                ref = ref[len(prefix):]
+                break
+        return f'"{key}" "{ref}"'
+    return re.sub(r'"(preload_file|precache_file)"\s+"([^"]+)"', repl, text,
+                  flags=re.IGNORECASE)
+
+
 def _write_l4n_scripts(analysis, root, log):
-    """合并脚本写入 root/l4n/scripts/sound/（去掉 scripts/ 前缀，原样照搬）。
-    返回文件数。"""
+    """合并脚本写入 root/l4n/scripts/sound/。返回文件数。"""
     base = os.path.join(root, 'l4n', 'scripts', 'sound')
     n = 0
     for fpath, text in analysis.merged_scripts().items():
-        if fpath.startswith('scripts/'):
-            sub = fpath[len('scripts/'):]
-        elif fpath.startswith('l4n/scripts/'):
-            # l4n 格式 VPK 的脚本已在 l4n/scripts/ 下，取其相对路径
-            sub = fpath[len('l4n/scripts/'):]
-        else:  # 理论上已被 check_l4n_scripts_compat 拦下
+        sub = _l4n_script_subpath(fpath)
+        if sub is None:
             log(f'警告：脚本 {fpath} 不在 scripts/ 或 l4n/scripts/ 下，已跳过')
             continue
+        # manifest 里的 preload_file/precache_file 引用也要去掉 scripts/ 前缀，
+        # 否则 l4n 找不到脚本
+        if fpath.lower().endswith('game_sounds_manifest.txt'):
+            text = _normalize_manifest_refs(text)
         dst = os.path.join(base, sub.replace('/', os.sep))
         os.makedirs(os.path.dirname(dst), exist_ok=True)
         with open(dst, 'w', encoding='utf-8', newline='') as f:
