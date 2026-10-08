@@ -1147,55 +1147,76 @@ def find_vpk_exe(game_root):
     return exe if os.path.isfile(exe) else None
 
 
-def _l4n_script_subpath(fpath):
-    """把来源脚本路径映射到 l4n/scripts/sound/ 下的相对路径。
+def _l4n_flat_script_name(fpath, used):
+    """把来源脚本路径映射为 l4n/scripts/sound/ 下的扁平文件名。
 
-    l4n 平台只从 l4n/scripts/sound/ 加载脚本，因此：
-    - scripts/sound/xxx.txt  -> xxx.txt      （scripts/sound/ 整段剥掉）
-    - scripts/xxx.txt        -> xxx.txt      （scripts/ 剥掉）
-    - l4n/scripts/xxx.txt    -> xxx.txt      （已是 l4n 格式，剥到 sound/ 同级）
-    - 自定义目录脚本（+Custom_Sounds 类型，如 MuisId-Mei/Apex_Legends/xxx.txt）
-      -> 保持原相对路径。manifest 里的 preload_file 正是按该相对路径引用，
-         两者保持一致，l4n 就能找到脚本。"""
+    l4n 只加载 l4n/scripts/sound/ 目录顶层的 .txt 脚本（不递归子目录），
+    因此无论来源脚本在哪（scripts/、scripts/sound/、或自定义目录如
+    MuisId-Mei/Apex_Legends/…），都要拍平到该目录下。
+    同名冲突时用上级目录名拼前缀区分。used 是已占用的名字集合（小写）。
+    """
     low = fpath.lower()
     for prefix in ('scripts/sound/', 'scripts/', 'l4n/scripts/sound/', 'l4n/scripts/'):
         if low.startswith(prefix):
-            return fpath[len(prefix):]
-    return fpath
+            fpath = fpath[len(prefix):]
+            break
+    parts = [p for p in fpath.replace('\\', '/').split('/') if p]
+    for n in range(1, len(parts) + 1):
+        cand = '-'.join(parts[-n:])
+        if cand.lower() not in used:
+            used.add(cand.lower())
+            return cand
+    i = 2
+    while f'{parts[-1]}.{i}'.lower() in used:
+        i += 1
+    cand = f'{parts[-1]}.{i}'
+    used.add(cand.lower())
+    return cand
 
 
-def _normalize_manifest_refs(text):
-    """规范化 manifest 里 preload_file/precache_file 的引用路径。
+def _normalize_manifest_refs(text, flat_map):
+    """把 manifest 里 preload_file/precache_file 的引用改写成 l4n 实际文件名。
 
-    l4n 把脚本放在 l4n/scripts/sound/ 下，manifest 里的引用必须指向该目录
-    内的相对路径。去掉 scripts/ 或 scripts/sound/ 前缀，使引用与
-    _l4n_script_subpath 的输出一致。"""
+    l4n 只加载 l4n/scripts/sound/ 顶层的 .txt，引用必须与
+    _l4n_flat_script_name 的输出一致。flat_map 为「原文件名(小写) -> 扁平名」；
+    指向未随包导出的原版脚本的引用，仅去掉 scripts/ 前缀（维持原有行为）。"""
     def repl(m):
         key = m.group(1)
         ref = m.group(2)
-        low = ref.lower()
-        for prefix in ('scripts/sound/', 'scripts/'):
-            if low.startswith(prefix):
-                ref = ref[len(prefix):]
-                break
-        return f'"{key}" "{ref}"'
+        base = ref.replace('\\', '/').rstrip('/').split('/')[-1].lower()
+        new = flat_map.get(base)
+        if new is None:
+            low = ref.lower()
+            for prefix in ('scripts/sound/', 'scripts/'):
+                if low.startswith(prefix):
+                    new = ref[len(prefix):]
+                    break
+            else:
+                new = ref
+        return f'"{key}" "{new}"'
     return re.sub(r'"(preload_file|precache_file)"\s+"([^"]+)"', repl, text,
                   flags=re.IGNORECASE)
 
 
 def _write_l4n_scripts(analysis, root):
-    """合并脚本写入 root/l4n/scripts/sound/。返回文件数。"""
+    """合并脚本扁平写入 root/l4n/scripts/sound/。返回文件数。"""
     base = os.path.join(root, 'l4n', 'scripts', 'sound')
+    os.makedirs(base, exist_ok=True)
+    merged = analysis.merged_scripts()
+    # 先确定所有脚本的扁平名，再改写 manifest 引用，保证引用与落盘名一致
+    used = set()
+    flat_map = {}
+    named = []
+    for fpath in merged:
+        flat = _l4n_flat_script_name(fpath, used)
+        named.append((fpath, flat))
+        flat_map[os.path.basename(fpath.replace('\\', '/')).lower()] = flat
     n = 0
-    for fpath, text in analysis.merged_scripts().items():
-        sub = _l4n_script_subpath(fpath)
-        # manifest 里的 preload_file/precache_file 引用也要去掉 scripts/ 前缀，
-        # 否则 l4n 找不到脚本
+    for fpath, flat in named:
+        text = merged[fpath]
         if fpath.lower().endswith('game_sounds_manifest.txt'):
-            text = _normalize_manifest_refs(text)
-        dst = os.path.join(base, sub.replace('/', os.sep))
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        with open(dst, 'w', encoding='utf-8', newline='') as f:
+            text = _normalize_manifest_refs(text, flat_map)
+        with open(os.path.join(base, flat), 'w', encoding='utf-8', newline='') as f:
             f.write(text)
         n += 1
     return n
