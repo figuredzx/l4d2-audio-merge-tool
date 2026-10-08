@@ -276,12 +276,18 @@ class App(tk.Tk):
         self.txt_log.configure(state='disabled')
 
     def _poll(self):
-        try:
-            while True:
+        # 每个回调单独兜底：任一回调抛异常都不能中断消息泵，
+        # 否则后台任务的结果永远送不到界面，表现为界面「卡死」。
+        while True:
+            try:
                 fn = self.q.get_nowait()
+            except queue.Empty:
+                break
+            try:
                 fn()
-        except queue.Empty:
-            pass
+            except Exception:
+                import traceback
+                traceback.print_exc()
         self.after(100, self._poll)
 
     def run_bg(self, fn, *args):
@@ -383,7 +389,7 @@ class App(tk.Tk):
                         messagebox.showinfo('提示', '该文件夹内没有找到 pak01_dir.vpk（音频库结构）。')
                 self.q.put(done)
             except Exception as e:
-                self.q.put(lambda: messagebox.showerror('错误', f'读取失败：{e}'))
+                self.q.put(lambda e=e: messagebox.showerror('错误', f'读取失败：{e}'))
         self.run_bg(work)
 
     def add_vpk_file(self):
@@ -420,7 +426,7 @@ class App(tk.Tk):
                         messagebox.showinfo('提示', '游戏目录下没有找到已部署的音频库文件夹。')
                 self.q.put(done)
             except Exception as e:
-                self.q.put(lambda: messagebox.showerror('错误', f'扫描失败：{e}'))
+                self.q.put(lambda e=e: messagebox.showerror('错误', f'扫描失败：{e}'))
         self.run_bg(work)
 
     def _add_sources(self, srcs):
@@ -595,7 +601,7 @@ class App(tk.Tk):
                 an.check_wav_formats(log=lambda m: self.q.put(lambda: self.log(m)))
                 self.q.put(lambda: self._analysis_done(an))
             except Exception as e:
-                self.q.put(lambda: messagebox.showerror('分析失败', str(e)))
+                self.q.put(lambda e=e: messagebox.showerror('分析失败', str(e)))
         self.run_bg(work)
 
     def _analysis_done(self, an):
@@ -826,7 +832,7 @@ class App(tk.Tk):
                             pass
                 self.q.put(lambda: self._export_done(result))
             except Exception as e:
-                self.q.put(lambda: self._export_fail(e))
+                self.q.put(lambda e=e: self._export_fail(e))
         self.run_bg(work)
 
     def _progress(self, cur, total, msg):

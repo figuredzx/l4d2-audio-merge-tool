@@ -1147,30 +1147,21 @@ def find_vpk_exe(game_root):
     return exe if os.path.isfile(exe) else None
 
 
-def check_l4n_scripts_compat(analysis):
-    """l4n 打包要求所有来源的脚本文件在 scripts/ 或 l4n/scripts/ 目录下。
-    返回不兼容的 (来源标签, 脚本路径) 列表。"""
-    bad = []
-    for src in analysis.sources:
-        for p in src.scripts:
-            if not (p.startswith('scripts/') or p.startswith('l4n/scripts/')):
-                bad.append((src.label, src.script_orig.get(p, p)))
-    return bad
-
-
 def _l4n_script_subpath(fpath):
     """把来源脚本路径映射到 l4n/scripts/sound/ 下的相对路径。
 
-    l4n 平台只扫描 l4n/scripts/sound/ 目录加载脚本，因此：
+    l4n 平台只从 l4n/scripts/sound/ 加载脚本，因此：
     - scripts/sound/xxx.txt  -> xxx.txt      （scripts/sound/ 整段剥掉）
     - scripts/xxx.txt        -> xxx.txt      （scripts/ 剥掉）
     - l4n/scripts/xxx.txt    -> xxx.txt      （已是 l4n 格式，剥到 sound/ 同级）
-    若都不匹配返回 None。"""
+    - 自定义目录脚本（+Custom_Sounds 类型，如 MuisId-Mei/Apex_Legends/xxx.txt）
+      -> 保持原相对路径。manifest 里的 preload_file 正是按该相对路径引用，
+         两者保持一致，l4n 就能找到脚本。"""
     low = fpath.lower()
     for prefix in ('scripts/sound/', 'scripts/', 'l4n/scripts/sound/', 'l4n/scripts/'):
         if low.startswith(prefix):
             return fpath[len(prefix):]
-    return None
+    return fpath
 
 
 def _normalize_manifest_refs(text):
@@ -1192,15 +1183,12 @@ def _normalize_manifest_refs(text):
                   flags=re.IGNORECASE)
 
 
-def _write_l4n_scripts(analysis, root, log):
+def _write_l4n_scripts(analysis, root):
     """合并脚本写入 root/l4n/scripts/sound/。返回文件数。"""
     base = os.path.join(root, 'l4n', 'scripts', 'sound')
     n = 0
     for fpath, text in analysis.merged_scripts().items():
         sub = _l4n_script_subpath(fpath)
-        if sub is None:
-            log(f'警告：脚本 {fpath} 不在 scripts/ 或 l4n/scripts/ 下，已跳过')
-            continue
         # manifest 里的 preload_file/precache_file 引用也要去掉 scripts/ 前缀，
         # 否则 l4n 找不到脚本
         if fpath.lower().endswith('game_sounds_manifest.txt'):
@@ -1324,13 +1312,6 @@ def export_l4n_standalone(analysis, out_dir, lib_name, l4n_exe, vpk_exe=None,
     """方案 A：把合并音频库独立打包成 l4n addon VPK，返回 vpk 路径。"""
     if not re.match(r'^[A-Za-z0-9_\-+]+$', lib_name):
         raise ValueError('库名只能包含英文字母、数字、下划线、短横线和加号（不能有空格）')
-    bad = check_l4n_scripts_compat(analysis)
-    if bad:
-        names = '；'.join(f'{lbl}: {p}' for lbl, p in bad[:5])
-        more = f'（等共 {len(bad)} 处）' if len(bad) > 5 else ''
-        raise ValueError('以下来源的脚本不在 scripts/ 目录下，无法用 l4n 打包：\n'
-                         f'{names}{more}')
-
     out_vpk = os.path.join(out_dir, f'{lib_name}l4n.vpk')
     if os.path.exists(out_vpk):
         os.remove(out_vpk)
@@ -1345,7 +1326,7 @@ def export_l4n_standalone(analysis, out_dir, lib_name, l4n_exe, vpk_exe=None,
                     '\taddonauthor\t"l4d2-audiomerge"\n'
                     f'\taddondescription\t"合并音频库 l4n 整合包"\n'
                     '}\n')
-        n_sc = _write_l4n_scripts(analysis, root, log)
+        n_sc = _write_l4n_scripts(analysis, root)
         log(f'脚本写入 l4n/scripts/sound/：{n_sc} 个')
         n_ot = _write_vpk_other_passthrough(analysis, root)
         if n_ot:
@@ -1373,13 +1354,6 @@ def export_l4n_merge(skin_vpk_path, analysis, out_dir, l4n_exe, vpk_exe=None,
     """方案 B：把音频库合并进皮肤 mod，封包为 <皮肤名>l4n.vpk，返回 vpk 路径。"""
     if not os.path.isfile(skin_vpk_path):
         raise ValueError(f'皮肤 mod 文件不存在：{skin_vpk_path}')
-    bad = check_l4n_scripts_compat(analysis)
-    if bad:
-        names = '；'.join(f'{lbl}: {p}' for lbl, p in bad[:5])
-        more = f'（等共 {len(bad)} 处）' if len(bad) > 5 else ''
-        raise ValueError('以下来源的脚本不在 scripts/ 目录下，无法用 l4n 打包：\n'
-                         f'{names}{more}')
-
     stem = os.path.splitext(os.path.basename(skin_vpk_path))[0]
     out_vpk = os.path.join(out_dir, f'{stem}l4n.vpk')
     if os.path.exists(out_vpk):
@@ -1404,7 +1378,7 @@ def export_l4n_merge(skin_vpk_path, analysis, out_dir, l4n_exe, vpk_exe=None,
             log('警告：该皮肤 mod 自带 l4n 目录（可能是二次打包产物），'
                 '将强制合并，同路径文件以音频库为准')
         progress(2, 6, '写入合并脚本')
-        n_sc = _write_l4n_scripts(analysis, root, log)
+        n_sc = _write_l4n_scripts(analysis, root)
         log(f'脚本写入 l4n/scripts/sound/：{n_sc} 个')
         n_ot = _write_vpk_other_passthrough(analysis, root)
         if n_ot:
